@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, APIRouter
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 import yaml
@@ -6,7 +6,6 @@ import httpx
 from .server_manager import TTSServerManager
 
 app = FastAPI()
-router = APIRouter()
 server_manager = TTSServerManager("/config/config.yml")
 
 class TTSRequest(BaseModel):
@@ -15,11 +14,11 @@ class TTSRequest(BaseModel):
     speaker_id: str = "default"
     tts_type: str = "coqui"
 
-@router.get("/health")
+@app.get("/api/health")
 async def health_check():
     return {"status": "healthy"}
 
-@router.get("/servers")
+@app.get("/api/servers")
 async def list_servers():
     """列出所有可用的TTS服务器"""
     return {"servers": [
@@ -32,7 +31,7 @@ async def list_servers():
         for name, info in server_manager.config["tts_servers"].items()
     ]}
 
-@router.post("/servers/{server_type}/load")
+@app.post("/api/servers/{server_type}/load")
 async def load_server(server_type: str):
     """加载指定的TTS服务器"""
     try:
@@ -43,7 +42,7 @@ async def load_server(server_type: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/servers/{server_type}/unload")
+@app.post("/api/servers/{server_type}/unload")
 async def unload_server(server_type: str):
     """卸载指定的TTS服务器"""
     result = server_manager.unload_server(server_type)
@@ -51,7 +50,7 @@ async def unload_server(server_type: str):
         raise HTTPException(status_code=404, detail=f"Server {server_type} not found")
     return result
 
-@router.get("/servers/{server_type}/status")
+@app.get("/api/servers/{server_type}/status")
 async def get_server_status(server_type: str):
     """获取服务器状态"""
     try:
@@ -59,7 +58,7 @@ async def get_server_status(server_type: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/tts")
+@app.post("/api/tts")
 async def text_to_speech(request: TTSRequest):
     """处理TTS请求"""
     # 检查服务器状态
@@ -86,9 +85,3 @@ async def text_to_speech(request: TTSRequest):
             return response.json()
         except httpx.RequestError:
             raise HTTPException(status_code=500, detail="Failed to reach TTS server")
-
-app.include_router(router)
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)

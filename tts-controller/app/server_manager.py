@@ -7,7 +7,8 @@ from pathlib import Path
 class TTSServerManager:
     def __init__(self, config_path: str):
         self.config_path = config_path
-        self.docker_client = docker.from_env()
+        # 使用 unix socket 连接 Docker
+        self.docker_client = docker.DockerClient(base_url='unix://var/run/docker.sock')
         self.port_manager = PortManager(start_port=5000)
         self.load_config()
         
