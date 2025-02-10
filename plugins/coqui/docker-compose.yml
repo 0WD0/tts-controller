@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  coqui-forward:
+    build:
+      context: ../../forward-server
+      dockerfile: Dockerfile
+    environment:
+      - TTS_TYPE=coqui
+      - TTS_SERVER_URL=http://coqui-tts:5003
+      - CONFIG_PATH=/config/coqui/config.yml
+      - LOG_PATH=/logs
+    volumes:
+      - ../../data/config:/config
+      - ../../data/logs/coqui:/logs
+      - ../../data/cache/coqui:/cache
+    networks:
+      - tts-network
+    depends_on:
+      - coqui-tts
+    restart: unless-stopped
+
+  coqui-tts:
+    build:
+      context: ../../coqui-tts
+      dockerfile: Dockerfile
+    ports:
+      - "5002:5002"  # WebUI
+      - "5003:5003"  # API
+    volumes:
+      - ../../data/models/coqui:/models
+      - ../../data/models/shared:/models/shared
+      - ../../data/cache/coqui:/cache
+      - ../../data/logs/coqui:/logs
+    environment:
+      - MODELS_PATH=/models
+      - CACHE_PATH=/cache
+      - LOG_PATH=/logs
+    networks:
+      - tts-network
+    restart: unless-stopped
+
+networks:
+  tts-network:
+    name: tts-network
+    external: true

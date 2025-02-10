@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  bark-forward:
+    build:
+      context: ../../forward-server
+      dockerfile: Dockerfile
+    environment:
+      - TTS_TYPE=bark
+      - TTS_SERVER_URL=http://bark-tts:8080
+      - CONFIG_PATH=/config/bark/config.yml
+      - LOG_PATH=/logs
+    volumes:
+      - ../../data/config:/config
+      - ../../data/logs/bark:/logs
+      - ../../data/cache/bark:/cache
+    networks:
+      - tts-network
+    depends_on:
+      - bark-tts
+    restart: unless-stopped
+
+  bark-tts:
+    build:
+      context: ../../bark-tts
+      dockerfile: Dockerfile
+    volumes:
+      - ../../data/models/bark:/models
+      - ../../data/models/shared:/models/shared
+      - ../../data/cache/bark:/cache
+      - ../../data/logs/bark:/logs
+    environment:
+      - MODELS_PATH=/models
+      - CACHE_PATH=/cache
+      - LOG_PATH=/logs
+    networks:
+      - tts-network
+    restart: unless-stopped
+
+networks:
+  tts-network:
+    name: tts-network
+    external: true

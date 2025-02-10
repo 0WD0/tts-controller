@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  tts-controller:
+    build: 
+      context: ./tts-controller
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"  # API端口
+    volumes:
+      - ./config:/config:ro  # 配置文件，只读
+      - ./data:/data  # 数据目录
+    environment:
+      - CONFIG_PATH=/config/config.yml
+      - LOG_PATH=/logs
+    networks:
+      - tts-network
+    restart: unless-stopped
+
+networks:
+  tts-network:
+    name: tts-network
+    driver: bridge
+
+volumes:
+  models:
+    driver: local
+  cache:
+    driver: local
+  logs:
+    driver: local
