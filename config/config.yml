@@ -1,9 +1,8 @@
 tts_servers:
   coqui:
     name: coqui-tts
-    forward_url: http://coqui-forward:8080
-    webui_url: http://coqui-tts:5002
     type: coqui
+    image: coqui-tts
     enabled: true
     supported_languages:
       - en
@@ -12,8 +11,8 @@ tts_servers:
     
   bark:
     name: bark-tts
-    forward_url: http://bark-forward:8080
     type: bark
+    image: bark-tts
     enabled: true
     supported_languages:
       - en
@@ -27,5 +26,4 @@ controller:
 # 转发服务器通用配置
 forward_server:
   timeout: 30  # 请求超时时间（秒）
-  port: 8080   # 所有转发服务统一使用此端口
   retry_count: 3  # 重试次数

@@ -1,11 +1,12 @@
 services:
   bark-forward:
+    image: tts-bark-forward
     build:
       context: ../../forward-server
       dockerfile: Dockerfile
     environment:
       - TTS_TYPE=bark
-      - TTS_SERVER_URL=http://bark-tts:8080
+      - TTS_SERVER_URL=http://bark-tts:5013
       - CONFIG_PATH=/config/bark/config.yml
       - LOG_PATH=/logs
     volumes:
@@ -19,9 +20,13 @@ services:
     restart: unless-stopped
 
   bark-tts:
+    image: tts-bark
     build:
       context: ../../bark-tts
       dockerfile: Dockerfile
+    ports:
+      - "5014:5002"  # WebUI
+      - "5015:5003"  # API
     volumes:
       - ../../data/models/bark:/models
       - ../../data/models/shared:/models/shared

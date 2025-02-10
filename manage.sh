@@ -1,16 +1,30 @@
 #!/bin/bash
 
 function start_core() {
+    echo "Starting core services..."
     docker compose up -d
 }
 
 function stop_core() {
+    echo "Stopping core services..."
     docker compose down
 }
 
 function list_plugins() {
     echo "Available plugins:"
     ls plugins/
+}
+
+function clean_all() {
+    echo "Cleaning up all containers..."
+    docker compose down --remove-orphans
+    for plugin in plugins/*; do
+        if [ -d "$plugin" ]; then
+            cd "$plugin"
+            docker compose down --remove-orphans
+            cd ../..
+        fi
+    done
 }
 
 function start_plugin() {
@@ -25,7 +39,7 @@ function start_plugin() {
     fi
     
     echo "Starting plugin $1..."
-    cd plugins/$1
+    cd "plugins/$1"
     docker compose up -d
     cd ../..
 }
@@ -39,15 +53,19 @@ function stop_plugin() {
     if [ ! -d "plugins/$1" ]; then
         echo "Plugin $1 not found"
         return 1
-	fi
+    fi
     
     echo "Stopping plugin $1..."
-    cd plugins/$1
+    cd "plugins/$1"
     docker compose down
     cd ../..
 }
 
 function start_all() {
+    echo "Cleaning up old containers..."
+    clean_all
+    
+    echo "Starting all services..."
     start_core
     for plugin in plugins/*; do
         if [ -d "$plugin" ]; then
@@ -89,8 +107,11 @@ case "$1" in
     "stop-all")
         stop_all
         ;;
+    "clean")
+        clean_all
+        ;;
     *)
-        echo "Usage: $0 {start-core|stop-core|list-plugins|start-plugin <name>|stop-plugin <name>|start-all|stop-all}"
+        echo "Usage: $0 {start-core|stop-core|list-plugins|start-plugin <name>|stop-plugin <name>|start-all|stop-all|clean}"
         exit 1
         ;;
 esac

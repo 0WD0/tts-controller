@@ -1,11 +1,12 @@
 services:
   coqui-forward:
+    image: tts-coqui-forward
     build:
       context: ../../forward-server
       dockerfile: Dockerfile
     environment:
       - TTS_TYPE=coqui
-      - TTS_SERVER_URL=http://coqui-tts:5003
+      - TTS_SERVER_URL=http://coqui-tts:5013
       - CONFIG_PATH=/config/coqui/config.yml
       - LOG_PATH=/logs
     volumes:
@@ -19,12 +20,13 @@ services:
     restart: unless-stopped
 
   coqui-tts:
+    image: tts-coqui
     build:
       context: ../../coqui-tts
       dockerfile: Dockerfile
     ports:
-      - "5002:5002"  # WebUI
-      - "5003:5003"  # API
+      - "5012:5002"  # WebUI
+      - "5013:5003"  # API
     volumes:
       - ../../data/models/coqui:/models
       - ../../data/models/shared:/models/shared
