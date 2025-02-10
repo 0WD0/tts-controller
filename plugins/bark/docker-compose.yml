@@ -1,5 +1,6 @@
 services:
   bark-forward:
+    container_name: tts-bark-forward
     image: tts-bark-forward
     build:
       context: ../../forward-server
@@ -20,6 +21,7 @@ services:
     restart: unless-stopped
 
   bark-tts:
+    container_name: tts-bark
     image: tts-bark
     build:
       context: ../../bark-tts

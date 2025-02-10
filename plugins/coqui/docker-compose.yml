@@ -1,5 +1,6 @@
 services:
   coqui-forward:
+    container_name: tts-coqui-forward
     image: tts-coqui-forward
     build:
       context: ../../forward-server
@@ -20,6 +21,7 @@ services:
     restart: unless-stopped
 
   coqui-tts:
+    container_name: tts-coqui
     image: tts-coqui
     build:
       context: ../../coqui-tts

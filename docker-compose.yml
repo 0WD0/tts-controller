@@ -1,5 +1,6 @@
 services:
   tts-controller:
+    container_name: tts-controller
     build: 
       context: ./tts-controller
       dockerfile: Dockerfile
