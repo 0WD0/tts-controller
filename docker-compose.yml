@@ -11,12 +11,23 @@ services:
       - ./data:/data  # 数据目录
       - ./plugins:/plugins  # 插件目录
       - /var/run/docker.sock:/var/run/docker.sock
+    user: "1000:docker"  # 使用非root用户但属于docker组
+    group_add:
+      - "965"  # 宿主机的docker组GID（需通过`getent group docker`获取实际值）
     environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
       - CONFIG_PATH=/config/config.yml
       - LOG_PATH=/logs
     networks:
       - tts-network
     restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./tts-controller/app
+          target: /app/app
+        - action: rebuild
+          path: ./tts-controller/requirements.txt
 
 networks:
   tts-network:
