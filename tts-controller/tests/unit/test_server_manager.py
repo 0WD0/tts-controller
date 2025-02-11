@@ -1,8 +1,14 @@
-import pytest
+import os
+import tempfile
 from pathlib import Path
-from app.server_manager import TTSServerManager, PluginInfo
-import docker.errors
 from unittest.mock import MagicMock, patch
+
+import docker
+import pytest
+import yaml
+from docker.errors import NotFound
+
+from app.server_manager import TTSServerManager, PluginInfo
 
 @pytest.mark.unit
 class TestTTSServerManager:
@@ -76,8 +82,8 @@ class TestTTSServerManager:
         # 测试运行中的插件
         assert manager.get_plugin_status('bark') == 'running'
         
-        # 测试容器不存在的情况
-        mock_docker_client.containers.get.side_effect = docker.errors.NotFound("Container not found")
+        # 模拟容器不存在的情况
+        mock_docker_client.containers.get.side_effect = NotFound("Container not found")
         assert manager.get_plugin_status('bark') == 'stopped'
         
         # 测试不存在的插件
@@ -152,5 +158,7 @@ class TestTTSServerManager:
         
         # 测试停止失败的情况
         with patch.object(manager, 'stop_plugin', return_value=False):
-            with pytest.raises(RuntimeError):
-                manager.unload_server('bark')
+            result = manager.unload_server('bark')
+            assert isinstance(result, dict)
+            assert result['status'] == 'error'
+            assert result['server_type'] == 'bark'

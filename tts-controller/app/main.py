@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Dict, List, Optional
-import yaml
+from typing import Dict
 import httpx
 from .server_manager import TTSServerManager
 

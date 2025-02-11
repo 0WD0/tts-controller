@@ -1,10 +1,11 @@
 import docker
-from typing import Dict, Optional, List
+from typing import Dict, Optional, Union, Tuple, List
 import logging
 import os
 from pathlib import Path
 import yaml
 from dataclasses import dataclass, field
+from docker.errors import NotFound
 
 # 配置日志记录
 logging.basicConfig(
@@ -22,7 +23,7 @@ class PluginInfo:
     container_name: str = ""
     environment: Dict[str, str] = field(default_factory=dict)
     volumes: Dict[str, Dict[str, str]] = field(default_factory=dict)  # 修改为字典格式
-    ports: Dict[str, int] = field(default_factory=dict)  # 修改为字符串键
+    ports: Dict[str, Union[int, None, Tuple[str, int], List[int]]] = field(default_factory=dict)  # 修改为字符串键
 
 class TTSServerManager:
     def __init__(self, config_path: str):
@@ -91,7 +92,7 @@ class TTSServerManager:
                         volumes[host_path] = {'bind': container_path, 'mode': 'rw'}
 
                     # 转换端口配置格式
-                    ports = {str(container_port): host_port 
+                    ports = {f"{container_port}/tcp": host_port 
                             for container_port, host_port in plugin_config.get('ports', {}).items()}
 
                     self.plugins[plugin_name] = PluginInfo(
@@ -111,7 +112,7 @@ class TTSServerManager:
         """确保 TTS 网络存在"""
         try:
             self.docker_client.networks.get("tts-network")
-        except docker.errors.NotFound:
+        except NotFound:
             self.docker_client.networks.create("tts-network", driver="bridge")
 
     def start_plugin(self, plugin_name: str) -> bool:
@@ -131,7 +132,7 @@ class TTSServerManager:
                 container = self.docker_client.containers.get(plugin.container_name)
                 logger.info(f"Found existing container {plugin.container_name}, removing it...")
                 container.remove(force=True)
-            except docker.errors.NotFound:
+            except NotFound:
                 pass
 
             # 创建并启动容器
@@ -166,8 +167,8 @@ class TTSServerManager:
                 container.stop()
                 container.remove()
                 logger.info(f"Container {plugin.container_name} stopped and removed")
-            except docker.errors.NotFound:
-                logger.warning(f"Container {plugin.container_name} not found")
+            except NotFound:
+                logger.info(f"Container {plugin.container_name} not found")
 
             plugin.status = "stopped"
             return True
@@ -207,7 +208,7 @@ class TTSServerManager:
             status = container.status
             plugin.status = status
             return status
-        except docker.errors.NotFound:
+        except NotFound:
             plugin.status = "stopped"
             return "stopped"
         except Exception as e:
