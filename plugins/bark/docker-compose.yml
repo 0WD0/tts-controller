@@ -1,3 +1,7 @@
+version: '3.8'
+
+name: bark
+
 services:
   bark-forward:
     container_name: tts-bark-forward
@@ -11,7 +15,7 @@ services:
       - CONFIG_PATH=/config/bark/config.yml
       - LOG_PATH=/logs
     volumes:
-      - ../../data/config:/config
+      - ../../data/config:/config:ro
       - ../../data/logs/bark:/logs
       - ../../data/cache/bark:/cache
     networks:
@@ -19,6 +23,14 @@ services:
     depends_on:
       - bark-tts
     restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./app
+          target: /app/app
+          ignore:
+            - "**/__pycache__"
+            - "**/*.pyc"
 
   bark-tts:
     container_name: tts-bark
@@ -29,18 +41,25 @@ services:
     ports:
       - "5014:5002"  # WebUI
       - "5015:5003"  # API
-    volumes:
-      - ../../data/models/bark:/models
-      - ../../data/models/shared:/models/shared
-      - ../../data/cache/bark:/cache
-      - ../../data/logs/bark:/logs
     environment:
-      - MODELS_PATH=/models
-      - CACHE_PATH=/cache
+      - CONFIG_PATH=/config/bark/config.yml
       - LOG_PATH=/logs
+      - CACHE_DIR=/cache
+    volumes:
+      - ../../data/config:/config:ro
+      - ../../data/logs/bark:/logs
+      - ../../data/cache/bark:/cache
     networks:
       - tts-network
     restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./app
+          target: /app/app
+          ignore:
+            - "**/__pycache__"
+            - "**/*.pyc"
 
 networks:
   tts-network:

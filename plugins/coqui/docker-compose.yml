@@ -1,3 +1,7 @@
+version: '3.8'
+
+name: coqui
+
 services:
   coqui-forward:
     container_name: tts-coqui-forward
@@ -11,7 +15,7 @@ services:
       - CONFIG_PATH=/config/coqui/config.yml
       - LOG_PATH=/logs
     volumes:
-      - ../../data/config:/config
+      - ../../data/config:/config:ro
       - ../../data/logs/coqui:/logs
       - ../../data/cache/coqui:/cache
     networks:
@@ -19,6 +23,14 @@ services:
     depends_on:
       - coqui-tts
     restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./app
+          target: /app/app
+          ignore:
+            - "**/__pycache__"
+            - "**/*.pyc"
 
   coqui-tts:
     container_name: tts-coqui
@@ -29,18 +41,25 @@ services:
     ports:
       - "5012:5002"  # WebUI
       - "5013:5003"  # API
-    volumes:
-      - ../../data/models/coqui:/models
-      - ../../data/models/shared:/models/shared
-      - ../../data/cache/coqui:/cache
-      - ../../data/logs/coqui:/logs
     environment:
-      - MODELS_PATH=/models
-      - CACHE_PATH=/cache
+      - CONFIG_PATH=/config/coqui/config.yml
       - LOG_PATH=/logs
+      - CACHE_DIR=/cache
+    volumes:
+      - ../../data/config:/config:ro
+      - ../../data/logs/coqui:/logs
+      - ../../data/cache/coqui:/cache
     networks:
       - tts-network
     restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./app
+          target: /app/app
+          ignore:
+            - "**/__pycache__"
+            - "**/*.pyc"
 
 networks:
   tts-network:

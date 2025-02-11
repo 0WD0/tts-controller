@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   tts-controller:
     container_name: tts-controller
@@ -11,9 +13,9 @@ services:
       - ./data:/data  # 数据目录
       - ./plugins:/plugins  # 插件目录
       - /var/run/docker.sock:/var/run/docker.sock
-    user: "1000:docker"  # 使用非root用户但属于docker组
+    user: "${HOST_UID:-1000}:docker"  # 使用环境变量或默认值
     group_add:
-      - "965"  # 宿主机的docker组GID（需通过`getent group docker`获取实际值）
+      - "965"  # 宿主机的docker组GID
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
       - CONFIG_PATH=/config/config.yml
@@ -23,21 +25,24 @@ services:
     restart: unless-stopped
     develop:
       watch:
+        # 同步 Python 代码变更
         - action: sync
           path: ./tts-controller/app
           target: /app/app
+          ignore:
+            - "**/__pycache__"
+            - "**/*.pyc"
+        # 同步配置文件变更
+        - action: sync
+          path: ./config
+          target: /config
+        # 监控依赖变更，触发重建
         - action: rebuild
           path: ./tts-controller/requirements.txt
+        # 监控 Dockerfile 变更，触发重建
+        - action: rebuild
+          path: ./tts-controller/Dockerfile
 
 networks:
   tts-network:
     name: tts-network
-    driver: bridge
-
-volumes:
-  models:
-    driver: local
-  cache:
-    driver: local
-  logs:
-    driver: local
