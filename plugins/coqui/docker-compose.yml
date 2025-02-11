@@ -3,7 +3,7 @@ services:
     container_name: tts-coqui-forward
     image: tts-coqui-forward
     build:
-      context: ../../forward-server
+      context: .
       dockerfile: Dockerfile
     environment:
       - TTS_TYPE=coqui
@@ -24,7 +24,7 @@ services:
     container_name: tts-coqui
     image: tts-coqui
     build:
-      context: ../../coqui-tts
+      context: .
       dockerfile: Dockerfile
     ports:
       - "5012:5002"  # WebUI
