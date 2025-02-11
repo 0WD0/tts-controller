@@ -40,7 +40,10 @@ class TestPluginLifecycle:
             assert container.status == 'running'
         
         # 5. 重启插件
-        assert manager.restart_plugin(plugin_name) is True
+        result = manager.restart_plugin(plugin_name)
+        assert isinstance(result, dict)
+        assert result['status'] == 'success'
+        assert result['message'] == 'Plugin restarted successfully'
         time.sleep(5)  # 等待容器重启
         
         # 6. 验证重启后状态

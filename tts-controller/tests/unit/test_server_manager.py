@@ -13,10 +13,13 @@ class TestTTSServerManager:
         # 模拟 docker.from_env()
         monkeypatch.setattr('docker.from_env', lambda: mock_docker_client)
         
-        # 模拟插件目录
-        monkeypatch.setattr('pathlib.Path.__new__', lambda cls, path: mock_plugin_dir if path == "/plugins" else Path(path))
+        # 创建 TTSServerManager 实例
+        manager = TTSServerManager(temp_config_file)
         
-        return TTSServerManager(temp_config_file)
+        # 直接设置 plugin_dir 属性
+        manager.plugin_dir = mock_plugin_dir
+        
+        return manager
 
     def test_init(self, manager):
         """测试初始化"""
@@ -36,20 +39,29 @@ class TestTTSServerManager:
         assert bark_plugin.name == 'bark'
         assert bark_plugin.status == 'stopped'
         
-    def test_start_plugin(self, manager, mock_subprocess):
+    def test_start_plugin(self, manager, mock_docker_client):
         """测试启动插件"""
+        # 模拟容器状态
+        mock_container = MagicMock()
+        mock_container.status = 'running'
+        mock_docker_client.containers.get.return_value = mock_container
+        mock_docker_client.containers.run.return_value = mock_container
+        
         # 测试启动存在的插件
         assert manager.start_plugin('bark') is True
-        mock_subprocess.assert_called_once()
         
         # 测试启动不存在的插件
         assert manager.start_plugin('nonexistent') is False
         
-    def test_stop_plugin(self, manager, mock_subprocess):
+    def test_stop_plugin(self, manager, mock_docker_client):
         """测试停止插件"""
+        # 模拟容器状态
+        mock_container = MagicMock()
+        mock_container.status = 'running'
+        mock_docker_client.containers.get.return_value = mock_container
+        
         # 测试停止存在的插件
         assert manager.stop_plugin('bark') is True
-        mock_subprocess.assert_called_once()
         
         # 测试停止不存在的插件
         assert manager.stop_plugin('nonexistent') is False
@@ -89,8 +101,10 @@ class TestTTSServerManager:
         # 模拟成功启动插件
         with patch.object(manager, 'start_plugin', return_value=True):
             result = manager.load_server('bark')
-            assert result['status'] == 'running'
-            assert result['type'] == 'bark'
+            assert isinstance(result, dict)
+            assert result['status'] == 'loaded'
+            assert result['server_type'] == 'bark'
+            assert 'plugin_info' in result
         
         # 测试加载不存在的服务器
         with pytest.raises(ValueError):
@@ -101,13 +115,42 @@ class TestTTSServerManager:
             with pytest.raises(RuntimeError):
                 manager.load_server('bark')
                 
+    def test_restart_plugin(self, manager, mock_docker_client):
+        """测试重启插件"""
+        # 模拟容器状态
+        mock_container = MagicMock()
+        mock_container.status = 'running'
+        mock_docker_client.containers.get.return_value = mock_container
+        
+        # 测试重启存在的插件
+        with patch.object(manager, 'stop_plugin', return_value=True), \
+             patch.object(manager, 'start_plugin', return_value=True):
+            result = manager.restart_plugin('bark')
+            assert isinstance(result, dict)
+            assert result['status'] == 'restarted'
+            assert result['server_type'] == 'bark'
+            assert 'plugin_info' in result
+        
+        # 测试重启不存在的插件
+        with pytest.raises(ValueError):
+            manager.restart_plugin('nonexistent')
+        
     def test_unload_server(self, manager):
         """测试卸载服务器"""
         # 模拟成功停止插件
         with patch.object(manager, 'stop_plugin', return_value=True):
-            manager.unload_server('bark')
+            result = manager.unload_server('bark')
+            assert isinstance(result, dict)
+            assert result['status'] == 'unloaded'
+            assert result['server_type'] == 'bark'
             # 验证 stop_plugin 被调用
             manager.stop_plugin.assert_called_once_with('bark')
         
         # 测试卸载不存在的服务器
-        manager.unload_server('nonexistent')  # 应该不会抛出异常
+        with pytest.raises(ValueError):
+            manager.unload_server('nonexistent')
+        
+        # 测试停止失败的情况
+        with patch.object(manager, 'stop_plugin', return_value=False):
+            with pytest.raises(RuntimeError):
+                manager.unload_server('bark')

@@ -257,7 +257,10 @@ class TTSServerManager:
             logger.error(f"Failed to stop plugin: {server_type}")
             return {'status': 'error', 'server_type': server_type}
 
-        return {'status': 'unloaded', 'server_type': server_type}
+        return {
+            'status': 'unloaded',
+            'server_type': server_type
+        }
 
     def get_server_status(self, server_type: str) -> Dict:
         """获取服务器状态"""
