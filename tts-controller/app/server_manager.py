@@ -97,45 +97,84 @@ class TTSServerManager:
             logger.error(f"Failed to parse docker-compose.yml: {e}")
             return []
 
-    def _run_compose_command(self, plugin_name: str, command: List[str]) -> bool:
-        """执行docker-compose命令"""
+    def _load_compose_config(self, compose_file: Path) -> dict:
+        """从docker-compose.yml文件加载配置"""
+        try:
+            with open(compose_file) as f:
+                return yaml.safe_load(f)
+        except Exception as e:
+            logger.error(f"Failed to load docker-compose.yml: {e}")
+            return {}
+
+    def _create_container_config(self, service_name: str, service_config: dict, compose_config: dict) -> dict:
+        """从compose配置创建容器配置"""
+        config = {
+            'image': service_config.get('image'),
+            'name': service_config.get('container_name', f"{compose_config.get('name', 'unknown')}-{service_name}"),
+            'detach': True,
+            'environment': service_config.get('environment', {}),
+            'volumes': service_config.get('volumes', []),
+            'ports': service_config.get('ports', []),
+            'network': 'tts-network'  # 使用固定网络名称
+        }
+        
+        # 处理其他配置项...
+        return config
+
+    def start_plugin(self, plugin_name: str) -> bool:
+        """启动指定的插件"""
+        logger.info(f"Starting plugin: {plugin_name}")
         if plugin_name not in self.plugins:
             logger.error(f"Plugin {plugin_name} not found")
             return False
 
         plugin = self.plugins[plugin_name]
-        base_cmd = ["docker", "compose", "-f", str(plugin.compose_file)]
-        cmd = base_cmd + command
-
+        compose_config = self._load_compose_config(plugin.compose_file)
+        
         try:
-            logger.debug(f"Running command: {' '.join(cmd)}")
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            logger.debug(f"Command output: {result.stdout}")
-            return True
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Command failed: {e.stderr}")
-            return False
+            # 确保网络存在
+            try:
+                self.docker_client.networks.get('tts-network')
+            except docker.errors.NotFound:
+                self.docker_client.networks.create('tts-network', driver='bridge')
 
-    def start_plugin(self, plugin_name: str) -> bool:
-        """启动指定的插件"""
-        logger.info(f"Starting plugin: {plugin_name}")
-        if self._run_compose_command(plugin_name, ["up", "-d"]):
+            # 启动每个服务
+            for service_name, service_config in compose_config.get('services', {}).items():
+                container_config = self._create_container_config(service_name, service_config, compose_config)
+                self.docker_client.containers.run(**container_config)
+
             self.plugins[plugin_name].status = "running"
             return True
-        return False
+        except Exception as e:
+            logger.error(f"Failed to start plugin {plugin_name}: {e}")
+            return False
 
     def stop_plugin(self, plugin_name: str) -> bool:
         """停止指定的插件"""
         logger.info(f"Stopping plugin: {plugin_name}")
-        if self._run_compose_command(plugin_name, ["down"]):
+        if plugin_name not in self.plugins:
+            logger.error(f"Plugin {plugin_name} not found")
+            return False
+
+        plugin = self.plugins[plugin_name]
+        try:
+            for container_name in plugin.containers:
+                try:
+                    container = self.docker_client.containers.get(container_name)
+                    container.stop()
+                    container.remove()
+                except docker.errors.NotFound:
+                    logger.warning(f"Container {container_name} not found")
+                    continue
+                except Exception as e:
+                    logger.error(f"Failed to stop container {container_name}: {e}")
+                    return False
+
             self.plugins[plugin_name].status = "stopped"
             return True
-        return False
+        except Exception as e:
+            logger.error(f"Failed to stop plugin {plugin_name}: {e}")
+            return False
 
     def restart_plugin(self, plugin_name: str) -> bool:
         """重启指定的插件"""

@@ -1,26 +1,24 @@
 FROM python:3.9-slim
 
-# 安装必要的包
+# 安装基本依赖
 RUN apt-get update && apt-get install -y \
     curl \
-    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装 Docker Compose V2
-RUN curl -SL https://github.com/docker/compose/releases/download/v2.23.3/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose \
-    && chmod +x /usr/local/bin/docker-compose \
-    && ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
-
-# 确保 docker 组存在
-RUN getent group docker || groupadd -g 999 docker
-
-# Add default user to docker group
-RUN usermod -aG docker root
-
+# 设置工作目录
 WORKDIR /app
+
+# 复制依赖文件
 COPY requirements.txt .
+
+# 安装 Python 依赖
 RUN pip install -r requirements.txt
 
+# 复制应用代码
 COPY . .
 
+# 暴露端口
+EXPOSE 8000
+
+# 启动应用
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
