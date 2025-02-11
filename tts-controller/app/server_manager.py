@@ -175,10 +175,26 @@ class TTSServerManager:
             logger.error(f"Failed to stop plugin {plugin_name}: {e}")
             return False
 
-    def restart_plugin(self, plugin_name: str) -> bool:
+    def restart_plugin(self, plugin_name: str) -> Dict:
         """重启指定的插件"""
         logger.info(f"Restarting plugin: {plugin_name}")
-        return self.stop_plugin(plugin_name) and self.start_plugin(plugin_name)
+        if plugin_name not in self.plugins:
+            logger.error(f"Plugin {plugin_name} not found")
+            raise ValueError(f"Plugin {plugin_name} not found")
+
+        if not self.stop_plugin(plugin_name):
+            logger.error(f"Failed to stop plugin: {plugin_name}")
+            raise RuntimeError(f"Failed to stop plugin: {plugin_name}")
+
+        if not self.start_plugin(plugin_name):
+            logger.error(f"Failed to start plugin: {plugin_name}")
+            raise RuntimeError(f"Failed to start plugin: {plugin_name}")
+
+        return {
+            "server_type": plugin_name,
+            "status": "restarted",
+            "plugin_info": self.plugins[plugin_name]
+        }
 
     def get_plugin_status(self, plugin_name: str) -> Optional[str]:
         """获取插件状态"""

@@ -39,10 +39,21 @@ async def unload_server(server_type: str) -> Dict:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/servers/{server_type}/restart")
+async def restart_server(server_type: str) -> Dict:
+    try:
+        return server_manager.restart_plugin(server_type)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/servers/{server_type}/status")
 async def get_server_status(server_type: str) -> Dict:
     try:
-        return server_manager.get_plugin_status(server_type)
+        status = server_manager.get_plugin_status(server_type)
+        return {
+            "server_type": server_type,
+            "status": status or "not_found"
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
