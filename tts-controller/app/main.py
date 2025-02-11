@@ -19,42 +19,30 @@ async def health_check():
     return {"status": "healthy"}
 
 @app.get("/api/servers")
-async def list_servers():
-    """列出所有可用的TTS服务器"""
-    return {"servers": [
-        {
-            "name": name,
-            "type": info["type"],
-            "enabled": info["enabled"],
-            "supported_languages": info["supported_languages"]
-        }
-        for name, info in server_manager.config["tts_servers"].items()
-    ]}
+async def get_all_servers() -> Dict:
+    try:
+        return server_manager.get_all_plugins()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/servers/{server_type}/load")
-async def load_server(server_type: str):
-    """加载指定的TTS服务器"""
+async def load_server(server_type: str) -> Dict:
     try:
-        result = server_manager.load_server(server_type)
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        return server_manager.load_server(server_type)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/servers/{server_type}/unload")
-async def unload_server(server_type: str):
-    """卸载指定的TTS服务器"""
-    result = server_manager.unload_server(server_type)
-    if result["status"] == "not_found":
-        raise HTTPException(status_code=404, detail=f"Server {server_type} not found")
-    return result
+async def unload_server(server_type: str) -> Dict:
+    try:
+        return server_manager.unload_server(server_type)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/servers/{server_type}/status")
-async def get_server_status(server_type: str):
-    """获取服务器状态"""
+async def get_server_status(server_type: str) -> Dict:
     try:
-        return server_manager.get_server_status(server_type)
+        return server_manager.get_plugin_status(server_type)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -62,7 +50,7 @@ async def get_server_status(server_type: str):
 async def text_to_speech(request: TTSRequest):
     """处理TTS请求"""
     # 检查服务器状态
-    status = server_manager.get_server_status(request.tts_type)
+    status = server_manager.get_plugin_status(request.tts_type)
     if status.get("status") == "not_loaded":
         # 如果服务器未加载，尝试加载它
         try:

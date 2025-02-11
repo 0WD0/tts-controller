@@ -21,8 +21,8 @@ class PluginInfo:
     status: str = "stopped"
     container_name: str = ""
     environment: Dict[str, str] = field(default_factory=dict)
-    volumes: List[str] = field(default_factory=list)
-    ports: Dict[int, int] = field(default_factory=dict)
+    volumes: Dict[str, Dict[str, str]] = field(default_factory=dict)  # 修改为字典格式
+    ports: Dict[str, int] = field(default_factory=dict)  # 修改为字符串键
 
 class TTSServerManager:
     def __init__(self, config_path: str):
@@ -52,7 +52,6 @@ class TTSServerManager:
             logger.error(f"Failed to initialize Docker client: {e}")
             raise
             
-        self.port_manager = PortManager(start_port=5000)
         self.load_config()
         self.scan_plugins()
         
@@ -85,14 +84,24 @@ class TTSServerManager:
                         plugin_config = yaml.safe_load(f)
                     
                     plugin_name = plugin_dir.name
+                    # 转换卷配置格式
+                    volumes = {}
+                    for volume in plugin_config.get('volumes', []):
+                        host_path, container_path = volume.split(':')
+                        volumes[host_path] = {'bind': container_path, 'mode': 'rw'}
+
+                    # 转换端口配置格式
+                    ports = {str(container_port): host_port 
+                            for container_port, host_port in plugin_config.get('ports', {}).items()}
+
                     self.plugins[plugin_name] = PluginInfo(
                         name=plugin_name,
                         plugin_dir=plugin_dir,
                         image=plugin_config['image'],
                         container_name=f"tts-{plugin_name}",
                         environment=plugin_config.get('environment', {}),
-                        volumes=plugin_config.get('volumes', []),
-                        ports=plugin_config.get('ports', {})
+                        volumes=volumes,
+                        ports=ports
                     )
                     logger.info(f"Found plugin: {plugin_name} at {plugin_dir}")
                 except Exception as e:
@@ -117,6 +126,14 @@ class TTSServerManager:
             # 确保网络存在
             self._ensure_network()
 
+            # 检查并移除已存在的同名容器
+            try:
+                container = self.docker_client.containers.get(plugin.container_name)
+                logger.info(f"Found existing container {plugin.container_name}, removing it...")
+                container.remove(force=True)
+            except docker.errors.NotFound:
+                pass
+
             # 创建并启动容器
             container = self.docker_client.containers.run(
                 image=plugin.image,
@@ -124,7 +141,7 @@ class TTSServerManager:
                 detach=True,
                 environment=plugin.environment,
                 volumes=plugin.volumes,
-                ports={f"{container}/tcp": host for container, host in plugin.ports.items()},
+                ports=plugin.ports,  # 直接使用转换后的端口配置
                 network="tts-network"
             )
 
@@ -202,19 +219,15 @@ class TTSServerManager:
         if server_type not in self.plugins:
             logger.error(f"Unknown server type: {server_type}")
             raise ValueError(f"Unknown server type: {server_type}")
-            
-        # 启动插件
+
+        logger.info(f"Starting plugin: {server_type}")
         if not self.start_plugin(server_type):
             raise RuntimeError(f"Failed to start plugin: {server_type}")
-            
-        # 等待服务就绪
-        # TODO: 实现服务就绪检查
-        status = self.get_plugin_status(server_type)
-        
+
         return {
-            "status": status,
-            "type": server_type,
-            "container": self.plugins[server_type].container_name
+            'server_type': server_type,
+            'status': 'loaded',
+            'plugin_info': self.plugins[server_type]
         }
 
     def unload_server(self, server_type: str) -> Dict:
@@ -223,46 +236,22 @@ class TTSServerManager:
         if server_type not in self.plugins:
             logger.error(f"Unknown server type: {server_type}")
             raise ValueError(f"Unknown server type: {server_type}")
-            
-        # 停止插件
+
         if not self.stop_plugin(server_type):
             logger.error(f"Failed to stop plugin: {server_type}")
-            raise RuntimeError(f"Failed to stop plugin: {server_type}")
-            
-        return {
-            "status": "stopped",
-            "type": server_type
-        }
+            return {'status': 'error', 'server_type': server_type}
 
-class PortManager:
-    def __init__(self, start_port: int = 5000):
-        self.start_port = start_port
-        self.used_ports: Dict[str, set] = {}
-        self.current_port = start_port
-        
-    def get_port(self) -> int:
-        """获取下一个可用端口"""
-        logger.debug(f"Getting next available port")
-        while self._is_port_used(self.current_port):
-            self.current_port += 1
-        port = self.current_port
-        self.current_port += 1
-        logger.debug(f"Port {port} is available")
-        return port
-        
-    def _is_port_used(self, port: int) -> bool:
-        """检查端口是否已被使用"""
-        logger.debug(f"Checking if port {port} is used")
-        for ports in self.used_ports.values():
-            if port in ports:
-                logger.debug(f"Port {port} is used")
-                return True
-        logger.debug(f"Port {port} is not used")
-        return False
-        
-    def release_ports(self, server_type: str):
-        """释放指定服务器使用的所有端口"""
-        logger.info(f"Releasing ports for server: {server_type}")
-        if server_type in self.used_ports:
-            self.used_ports.pop(server_type)
-            logger.info(f"Ports released for server: {server_type}")
+        return {'status': 'unloaded', 'server_type': server_type}
+
+    def get_server_status(self, server_type: str) -> Dict:
+        """获取服务器状态"""
+        logger.info(f"Getting server status: {server_type}")
+        if server_type not in self.plugins:
+            logger.error(f"Unknown server type: {server_type}")
+            raise ValueError(f"Unknown server type: {server_type}")
+
+        status = self.get_plugin_status(server_type)
+        return {
+            'server_type': server_type,
+            'status': status
+        }
