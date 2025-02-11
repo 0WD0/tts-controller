@@ -5,7 +5,7 @@ import logging
 import os
 from pathlib import Path
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # 配置日志记录
 logging.basicConfig(
@@ -19,7 +19,7 @@ class PluginInfo:
     name: str
     compose_file: Path
     status: str = "stopped"
-    containers: List[str] = None
+    containers: List[str] = field(default_factory=list)
 
 class TTSServerManager:
     def __init__(self, config_path: str):
