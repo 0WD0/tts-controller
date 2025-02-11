@@ -6,4 +6,4 @@ volumes:
   - /data/models:/app/models
   - /data/cache:/app/cache
 ports:
-  5000: 5000  # host_port: container_port
+  5001: 5001  # host_port: container_port
