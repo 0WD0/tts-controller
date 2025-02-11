@@ -34,7 +34,8 @@ class TTSServerManager:
         try:
             logger.debug("Attempting to initialize Docker client...")
             # 直接使用DockerClient并指定base_url
-            self.docker_client = docker.DockerClient(base_url='unix:///var/run/docker.sock')
+            self.docker_client = docker.from_env()
+            # self.docker_client = docker.DockerClient(base_url='unix:///var/run/docker.sock')
             logger.info("Docker client initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize Docker client: {e}")
