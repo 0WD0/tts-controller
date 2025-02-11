@@ -1,0 +1,9 @@
+image: tts-bark:latest
+environment:
+  MODEL_NAME: suno/bark
+  DEVICE: cuda
+volumes:
+  - /data/models:/app/models
+  - /data/cache:/app/cache
+ports:
+  8001: 8000  # host_port: container_port

@@ -1,10 +1,9 @@
 import docker
-import yaml
 from typing import Dict, Optional, List
 import logging
 import os
 from pathlib import Path
-import subprocess
+import yaml
 from dataclasses import dataclass, field
 
 # 配置日志记录
@@ -17,9 +16,13 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PluginInfo:
     name: str
-    compose_file: Path
+    plugin_dir: Path
+    image: str
     status: str = "stopped"
-    containers: List[str] = field(default_factory=list)
+    container_name: str = ""
+    environment: Dict[str, str] = field(default_factory=dict)
+    volumes: List[str] = field(default_factory=list)
+    ports: Dict[int, int] = field(default_factory=dict)
 
 class TTSServerManager:
     def __init__(self, config_path: str):
@@ -54,6 +57,7 @@ class TTSServerManager:
         self.scan_plugins()
         
     def load_config(self):
+        """加载配置文件"""
         logger.info(f"Loading configuration from {self.config_path}")
         try:
             with open(self.config_path) as f:
@@ -74,52 +78,32 @@ class TTSServerManager:
             if not plugin_dir.is_dir():
                 continue
 
-            compose_file = plugin_dir / "docker-compose.yml"
-            if compose_file.exists():
-                plugin_name = plugin_dir.name
-                self.plugins[plugin_name] = PluginInfo(
-                    name=plugin_name,
-                    compose_file=compose_file,
-                    containers=self._get_plugin_containers(compose_file)
-                )
-                logger.info(f"Found plugin: {plugin_name} at {compose_file}")
+            config_file = plugin_dir / "config.yaml"
+            if config_file.exists():
+                try:
+                    with open(config_file) as f:
+                        plugin_config = yaml.safe_load(f)
+                    
+                    plugin_name = plugin_dir.name
+                    self.plugins[plugin_name] = PluginInfo(
+                        name=plugin_name,
+                        plugin_dir=plugin_dir,
+                        image=plugin_config['image'],
+                        container_name=f"tts-{plugin_name}",
+                        environment=plugin_config.get('environment', {}),
+                        volumes=plugin_config.get('volumes', []),
+                        ports=plugin_config.get('ports', {})
+                    )
+                    logger.info(f"Found plugin: {plugin_name} at {plugin_dir}")
+                except Exception as e:
+                    logger.error(f"Failed to load plugin config for {plugin_dir}: {e}")
 
-    def _get_plugin_containers(self, compose_file: Path) -> List[str]:
-        """从docker-compose.yml文件中获取容器名称列表"""
+    def _ensure_network(self):
+        """确保 TTS 网络存在"""
         try:
-            with open(compose_file) as f:
-                compose_config = yaml.safe_load(f)
-            return [
-                service.get('container_name', f"{compose_config.get('name', 'unknown')}-{name}")
-                for name, service in compose_config.get('services', {}).items()
-            ]
-        except Exception as e:
-            logger.error(f"Failed to parse docker-compose.yml: {e}")
-            return []
-
-    def _load_compose_config(self, compose_file: Path) -> dict:
-        """从docker-compose.yml文件加载配置"""
-        try:
-            with open(compose_file) as f:
-                return yaml.safe_load(f)
-        except Exception as e:
-            logger.error(f"Failed to load docker-compose.yml: {e}")
-            return {}
-
-    def _create_container_config(self, service_name: str, service_config: dict, compose_config: dict) -> dict:
-        """从compose配置创建容器配置"""
-        config = {
-            'image': service_config.get('image'),
-            'name': service_config.get('container_name', f"{compose_config.get('name', 'unknown')}-{service_name}"),
-            'detach': True,
-            'environment': service_config.get('environment', {}),
-            'volumes': service_config.get('volumes', []),
-            'ports': service_config.get('ports', []),
-            'network': 'tts-network'  # 使用固定网络名称
-        }
-        
-        # 处理其他配置项...
-        return config
+            self.docker_client.networks.get("tts-network")
+        except docker.errors.NotFound:
+            self.docker_client.networks.create("tts-network", driver="bridge")
 
     def start_plugin(self, plugin_name: str) -> bool:
         """启动指定的插件"""
@@ -129,21 +113,23 @@ class TTSServerManager:
             return False
 
         plugin = self.plugins[plugin_name]
-        compose_config = self._load_compose_config(plugin.compose_file)
-        
         try:
             # 确保网络存在
-            try:
-                self.docker_client.networks.get('tts-network')
-            except docker.errors.NotFound:
-                self.docker_client.networks.create('tts-network', driver='bridge')
+            self._ensure_network()
 
-            # 启动每个服务
-            for service_name, service_config in compose_config.get('services', {}).items():
-                container_config = self._create_container_config(service_name, service_config, compose_config)
-                self.docker_client.containers.run(**container_config)
+            # 创建并启动容器
+            container = self.docker_client.containers.run(
+                image=plugin.image,
+                name=plugin.container_name,
+                detach=True,
+                environment=plugin.environment,
+                volumes=plugin.volumes,
+                ports={f"{container}/tcp": host for container, host in plugin.ports.items()},
+                network="tts-network"
+            )
 
-            self.plugins[plugin_name].status = "running"
+            plugin.status = "running"
+            logger.info(f"Plugin {plugin_name} started successfully")
             return True
         except Exception as e:
             logger.error(f"Failed to start plugin {plugin_name}: {e}")
@@ -158,19 +144,15 @@ class TTSServerManager:
 
         plugin = self.plugins[plugin_name]
         try:
-            for container_name in plugin.containers:
-                try:
-                    container = self.docker_client.containers.get(container_name)
-                    container.stop()
-                    container.remove()
-                except docker.errors.NotFound:
-                    logger.warning(f"Container {container_name} not found")
-                    continue
-                except Exception as e:
-                    logger.error(f"Failed to stop container {container_name}: {e}")
-                    return False
+            try:
+                container = self.docker_client.containers.get(plugin.container_name)
+                container.stop()
+                container.remove()
+                logger.info(f"Container {plugin.container_name} stopped and removed")
+            except docker.errors.NotFound:
+                logger.warning(f"Container {plugin.container_name} not found")
 
-            self.plugins[plugin_name].status = "stopped"
+            plugin.status = "stopped"
             return True
         except Exception as e:
             logger.error(f"Failed to stop plugin {plugin_name}: {e}")
@@ -188,13 +170,10 @@ class TTSServerManager:
         
         plugin = self.plugins[plugin_name]
         try:
-            for container_name in plugin.containers:
-                container = self.docker_client.containers.get(container_name)
-                if container.status != "running":
-                    plugin.status = "partial"
-                    return "partial"
-            plugin.status = "running"
-            return "running"
+            container = self.docker_client.containers.get(plugin.container_name)
+            status = container.status
+            plugin.status = status
+            return status
         except docker.errors.NotFound:
             plugin.status = "stopped"
             return "stopped"
@@ -209,8 +188,11 @@ class TTSServerManager:
             status = self.get_plugin_status(name)
             result[name] = {
                 "status": status,
-                "compose_file": str(plugin.compose_file),
-                "containers": plugin.containers
+                "image": plugin.image,
+                "container_name": plugin.container_name,
+                "environment": plugin.environment,
+                "volumes": plugin.volumes,
+                "ports": plugin.ports
             }
         return result
 
@@ -227,22 +209,30 @@ class TTSServerManager:
             
         # 等待服务就绪
         # TODO: 实现服务就绪检查
+        status = self.get_plugin_status(server_type)
         
         return {
-            "status": "running",
-            "type": server_type
+            "status": status,
+            "type": server_type,
+            "container": self.plugins[server_type].container_name
         }
 
-    def unload_server(self, server_type: str):
+    def unload_server(self, server_type: str) -> Dict:
         """卸载指定的TTS服务器"""
         logger.info(f"Unloading server: {server_type}")
         if server_type not in self.plugins:
             logger.error(f"Unknown server type: {server_type}")
-            return
+            raise ValueError(f"Unknown server type: {server_type}")
             
         # 停止插件
         if not self.stop_plugin(server_type):
             logger.error(f"Failed to stop plugin: {server_type}")
+            raise RuntimeError(f"Failed to stop plugin: {server_type}")
+            
+        return {
+            "status": "stopped",
+            "type": server_type
+        }
 
 class PortManager:
     def __init__(self, start_port: int = 5000):
