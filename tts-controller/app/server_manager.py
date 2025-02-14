@@ -26,8 +26,9 @@ class PluginInfo:
     ports: Dict[str, Union[int, None, Tuple[str, int], List[int]]] = field(default_factory=dict)  # 修改为字符串键
 
 class TTSServerManager:
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, plugin_dir: str):
         self.config_path = config_path
+        self.plugin_dir = plugin_dir
         self.plugins: Dict[str, PluginInfo] = {}
         logger.info(f"Initializing TTSServerManager with config path: {config_path}")
         
@@ -69,44 +70,46 @@ class TTSServerManager:
 
     def scan_plugins(self):
         """扫描插件目录，查找可用的TTS插件"""
-        plugins_dir = Path("/plugins")
-        if not plugins_dir.exists():
-            logger.error("Plugins directory not found")
-            return
-
-        for plugin_dir in plugins_dir.iterdir():
-            if not plugin_dir.is_dir():
-                continue
-
-            config_file = plugin_dir / "config.yaml"
-            if config_file.exists():
+        logger.info("Scanning for TTS plugins...")
+        try:
+            plugins_dir = Path(self.plugin_dir)
+            for plugin_dir in plugins_dir.iterdir():
+                if not plugin_dir.is_dir():
+                    continue
+                    
+                config_file = plugin_dir / "config.yaml"
+                if not config_file.exists():
+                    logger.warning(f"No config.yaml found in {plugin_dir}")
+                    continue
+                    
                 try:
                     with open(config_file) as f:
-                        plugin_config = yaml.safe_load(f)
+                        config = yaml.safe_load(f)
+                        
+                    # 检查是否是 GPU 版本
+                    is_gpu = "gpu" in plugin_dir.name.lower()
+                    plugin_name = plugin_dir.name.replace("-gpu", "") if is_gpu else plugin_dir.name
                     
-                    plugin_name = plugin_dir.name
-                    # 转换卷配置格式
-                    volumes = {}
-                    for volume in plugin_config.get('volumes', []):
-                        host_path, container_path = volume.split(':')
-                        volumes[host_path] = {'bind': container_path, 'mode': 'rw'}
-
-                    # 转换端口配置格式
-                    ports = {f"{container_port}/tcp": host_port 
-                            for container_port, host_port in plugin_config.get('ports', {}).items()}
-
-                    self.plugins[plugin_name] = PluginInfo(
+                    # 创建插件信息
+                    plugin = PluginInfo(
                         name=plugin_name,
                         plugin_dir=plugin_dir,
-                        image=plugin_config['image'],
-                        container_name=f"tts-{plugin_name}",
-                        environment=plugin_config.get('environment', {}),
-                        volumes=volumes,
-                        ports=ports
+                        image=config.get("image", ""),
+                        container_name=f"tts-{plugin_dir.name}",
+                        environment=config.get("environment", {}),
+                        volumes=config.get("volumes", {}),
+                        ports=config.get("ports", {})
                     )
-                    logger.info(f"Found plugin: {plugin_name} at {plugin_dir}")
+                    
+                    self.plugins[plugin_dir.name] = plugin
+                    logger.info(f"Found plugin: {plugin_dir.name} ({plugin.image})")
+                    
                 except Exception as e:
-                    logger.error(f"Failed to load plugin config for {plugin_dir}: {e}")
+                    logger.error(f"Error loading plugin config from {config_file}: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.error(f"Error scanning plugins directory: {e}")
 
     def _ensure_network(self):
         """确保 TTS 网络存在"""
