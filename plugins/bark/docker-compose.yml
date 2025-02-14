@@ -1,0 +1,64 @@
+version: '3.8'
+
+name: bark
+
+services:
+  bark-forward:
+    container_name: tts-bark-forward
+    image: tts-bark-forward
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - TTS_TYPE=bark
+      - TTS_SERVER_URL=http://bark-tts:5013
+      - CONFIG_PATH=/config/bark/config.yml
+      - LOG_PATH=/logs
+    volumes:
+      - ../../data/config:/config:ro
+      - ../../data/logs/bark:/logs
+      - ../../data/cache/bark:/cache
+    networks:
+      - tts-network
+    depends_on:
+      - bark-tts
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./app
+          target: /app/app
+          ignore:
+            - "**/__pycache__"
+            - "**/*.pyc"
+
+  bark-tts:
+    container_name: tts-bark
+    image: tts-bark
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - CONFIG_PATH=/config/bark/config.yml
+      - LOG_PATH=/logs
+      - CACHE_DIR=/cache
+    volumes:
+      - ../../data/config:/config:ro
+      - ../../data/logs/bark:/logs
+      - ../../data/cache/bark:/cache
+    networks:
+      - tts-network
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./app
+          target: /app/app
+          ignore:
+            - "**/__pycache__"
+            - "**/*.pyc"
+
+networks:
+  tts-network:
+    name: tts-network
+    external: true

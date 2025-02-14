@@ -237,7 +237,7 @@ class TTSServerManager:
             logger.error(f"Unknown server type: {server_type}")
             raise ValueError(f"Unknown server type: {server_type}")
 
-        logger.info(f"Starting plugin: {server_type}")
+        logger.info(f"Starting load server: {server_type}")
         if not self.start_plugin(server_type):
             raise RuntimeError(f"Failed to start plugin: {server_type}")
 

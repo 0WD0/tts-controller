@@ -11,7 +11,6 @@ services:
       - ./data:/data  # 数据目录
       - ./plugins:/plugins  # 插件目录
       - /var/run/docker.sock:/var/run/docker.sock
-    # user: "1000:1000"  # 使用 UID:GID
     group_add:
       - "965"  # docker 组 GID
     environment:
