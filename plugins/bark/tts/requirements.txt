@@ -1,0 +1,12 @@
+transformers>=4.19.0
+torch>=2.0.0
+torchaudio>=2.0.0
+numpy>=1.20.0
+scipy>=1.7.0
+suno-bark>=0.0.1
+fastapi>=0.68.0
+uvicorn>=0.15.0
+python-multipart>=0.0.5
+pydantic>=1.8.0
+PyYAML>=5.4.0
+soundfile>=0.12.0

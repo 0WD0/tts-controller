@@ -1,23 +1,23 @@
 version: '3.8'
 
-name: bark
+name: bark-gpu
 
 services:
   bark-forward:
-    container_name: tts-bark-forward
-    image: tts-bark-forward
+    container_name: tts-bark-gpu-forward
+    image: tts-bark-gpu-forward
     build:
       context: ./forward
       dockerfile: Dockerfile
     environment:
-      - TTS_TYPE=bark
+      - TTS_TYPE=bark-gpu
       - TTS_SERVER_URL=http://bark-tts:5013
-      - CONFIG_PATH=/config/bark/config.yml
+      - CONFIG_PATH=/config/bark-gpu/config.yml
       - LOG_PATH=/logs
     volumes:
       - ../../data/config:/config:ro
-      - ../../data/logs/bark:/logs
-      - ../../data/cache/bark:/cache
+      - ../../data/logs/bark-gpu:/logs
+      - ../../data/cache/bark-gpu:/cache
     networks:
       - tts-network
     depends_on:
@@ -33,20 +33,20 @@ services:
             - "**/*.pyc"
 
   bark-tts:
-    container_name: tts-bark
-    image: tts-bark
+    container_name: tts-bark-gpu
+    image: tts-bark-gpu
     build:
       context: ./tts
       dockerfile: Dockerfile
     environment:
-      - CONFIG_PATH=/config/bark/config.yml
+      - CONFIG_PATH=/config/bark-gpu/config.yml
       - LOG_PATH=/logs
       - CACHE_DIR=/cache
       - CUDA_VISIBLE_DEVICES=0
     volumes:
       - ../../data/config:/config:ro
-      - ../../data/logs/bark:/logs
-      - ../../data/cache/bark:/cache
+      - ../../data/logs/bark-gpu:/logs
+      - ../../data/cache/bark-gpu:/cache
     deploy:
       resources:
         reservations:

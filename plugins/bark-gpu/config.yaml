@@ -1,7 +1,7 @@
-image: tts-bark:latest
+image: tts-bark-gpu:latest
 environment:
   MODEL_NAME: suno/bark
-  DEVICE: cpu
+  DEVICE: cuda
 volumes:
   - /data/models:/app/models
   - /data/cache:/app/cache
