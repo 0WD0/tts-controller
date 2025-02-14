@@ -1,50 +1,56 @@
-import os
+import io
+import torch
 import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional
-import torch
-from bark import SAMPLE_RATE, generate_audio, preload_models
-import numpy as np
-import io
 import soundfile as sf
+from transformers import AutoProcessor, BarkModel
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 创建 FastAPI 应用
 app = FastAPI(title="Bark TTS Service (GPU)")
 
-class TTSRequest(BaseModel):
-    text: str
-    voice_preset: Optional[str] = "v2/en_speaker_6"
-    temperature: Optional[float] = 0.7
+# 全局变量
+SAMPLE_RATE = 24000
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# 预加载模型
+# 模型和处理器
+processor = None
+model = None
+
+class TextToSpeechRequest(BaseModel):
+    text: str
+    voice_preset: str = "v2/en_speaker_6"
+
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Loading Bark models...")
-    # 确保 CUDA 可用
-    if not torch.cuda.is_available():
-        logger.error("CUDA is not available! This is the GPU version and requires CUDA.")
-        raise RuntimeError("CUDA is not available")
-    
-    device = os.getenv("DEVICE", "cuda")
-    logger.info(f"Using device: {device}")
-    logger.info(f"CUDA Device: {torch.cuda.get_device_name()}")
-    preload_models()
-    logger.info("Models loaded successfully")
+    global processor, model
+    try:
+        logger.info(f"Loading Bark model on {DEVICE}...")
+        processor = AutoProcessor.from_pretrained("suno/bark")
+        model = BarkModel.from_pretrained("suno/bark")
+        if DEVICE == "cuda":
+            model = model.to(DEVICE)
+        logger.info("Model loaded successfully")
+    except Exception as e:
+        logger.error(f"Error loading model: {e}")
+        raise
 
 @app.post("/tts")
-async def text_to_speech(request: TTSRequest):
+async def text_to_speech(request: TextToSpeechRequest):
     try:
         # 生成音频
-        audio_array = generate_audio(
-            request.text,
-            history_prompt=request.voice_preset,
-            temperature=request.temperature
-        )
+        inputs = processor(request.text, voice_preset=request.voice_preset)
+        
+        # 将输入移到正确的设备上
+        if DEVICE == "cuda":
+            inputs = {k: v.to(DEVICE) if torch.is_tensor(v) else v for k, v in inputs.items()}
+        
+        # 生成音频
+        audio_array = model.generate(**inputs)
+        audio_array = audio_array.cpu().numpy().squeeze()
         
         # 将音频数组转换为字节流
         audio_bytes = io.BytesIO()
@@ -54,18 +60,26 @@ async def text_to_speech(request: TTSRequest):
         return audio_bytes.getvalue()
         
     except Exception as e:
-        logger.error(f"Error generating audio: {str(e)}")
+        logger.error(f"Error generating audio: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 async def health_check():
-    gpu_info = {
-        "device": "cuda",
-        "cuda_available": torch.cuda.is_available(),
-        "gpu_name": torch.cuda.get_device_name() if torch.cuda.is_available() else None,
-        "gpu_memory": f"{torch.cuda.memory_allocated() / 1024**2:.2f}MB allocated" if torch.cuda.is_available() else None
+    """健康检查端点，返回设备信息"""
+    device_info = {
+        "status": "healthy",
+        "device": DEVICE
     }
-    return {"status": "healthy", **gpu_info}
+    
+    if DEVICE == "cuda":
+        device_info.update({
+            "gpu_name": torch.cuda.get_device_name(0),
+            "gpu_memory_total": torch.cuda.get_device_properties(0).total_memory,
+            "gpu_memory_allocated": torch.cuda.memory_allocated(0),
+            "cuda_version": torch.version.cuda
+        })
+    
+    return device_info
 
 if __name__ == "__main__":
     import uvicorn
