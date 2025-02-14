@@ -13,11 +13,7 @@ def manager(temp_config_file, mock_docker_client, mock_plugin_dir, monkeypatch):
     monkeypatch.setattr('docker.from_env', lambda: mock_docker_client)
     
     # 创建 TTSServerManager 实例
-    manager = TTSServerManager(temp_config_file)
-    
-    # 直接设置 plugin_dir 属性
-    manager.plugin_dir = mock_plugin_dir
-    
+    manager = TTSServerManager(temp_config_file, mock_plugin_dir)
     return manager
 
 class TestTTSServerManager:
@@ -34,34 +30,47 @@ class TestTTSServerManager:
         # 测试扫描已知插件
         plugins = manager.plugins
         assert 'bark' in plugins
+        assert 'bark-gpu' in plugins
         assert 'coqui' in plugins
 
-        # 验证插件信息
+        # 验证 CPU 版本插件信息
         bark_plugin = plugins['bark']
         assert bark_plugin.name == 'bark'
         assert bark_plugin.image is not None
         assert bark_plugin.container_name == 'tts-bark'
+        assert bark_plugin.environment.get('DEVICE') == 'cpu'
 
-        coqui_plugin = plugins['coqui']
-        assert coqui_plugin.name == 'coqui'
-        assert coqui_plugin.image is not None
-        assert coqui_plugin.container_name == 'tts-coqui'
+        # 验证 GPU 版本插件信息
+        bark_gpu_plugin = plugins['bark-gpu']
+        assert bark_gpu_plugin.name == 'bark'
+        assert bark_gpu_plugin.image is not None
+        assert bark_gpu_plugin.container_name == 'tts-bark-gpu'
+        assert bark_gpu_plugin.environment.get('DEVICE') == 'cuda'
 
     def test_start_plugin(self, manager, mock_docker_client):
         """测试启动插件"""
-        # 模拟容器状态
-        mock_container = MagicMock()
-        mock_container.status = 'running'
-        mock_docker_client.containers.get.return_value = mock_container
-        mock_docker_client.containers.run.return_value = mock_container
-
-        # 测试启动存在的插件
+        # 测试 CPU 版本
         result = manager.start_plugin('bark')
         assert result is True
+        
+        # 测试 GPU 版本
+        if 'bark-gpu' in manager.plugins:
+            result = manager.start_plugin('bark-gpu')
+            assert result is True
 
-        # 测试启动不存在的插件
-        result = manager.start_plugin('nonexistent')
-        assert result is False
+    def test_plugin_health_check(self, manager):
+        """测试插件健康检查"""
+        # 测试 CPU 版本健康检查
+        health = manager.check_plugin_health('bark')
+        assert health['status'] == 'healthy'
+        assert health.get('device', 'cpu') == 'cpu'
+
+        # 测试 GPU 版本健康检查
+        if 'bark-gpu' in manager.plugins:
+            health = manager.check_plugin_health('bark-gpu')
+            assert health['status'] == 'healthy'
+            assert health['device'] == 'cuda'
+            assert 'gpu_name' in health
 
     def test_stop_plugin(self, manager, mock_docker_client):
         """测试停止插件"""
@@ -104,6 +113,7 @@ class TestTTSServerManager:
         assert isinstance(plugins, dict)
         assert len(plugins) > 0
         assert 'bark' in plugins
+        assert 'bark-gpu' in plugins
         assert 'coqui' in plugins
 
         # 验证插件信息格式

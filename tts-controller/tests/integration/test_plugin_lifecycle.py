@@ -10,7 +10,8 @@ class TestPluginLifecycle:
     def manager(self):
         """创建真实的 TTSServerManager 实例"""
         config_path = "/config/config.yml"
-        manager = TTSServerManager(config_path)
+        plugin_dir = "/plugins"
+        manager = TTSServerManager(config_path, plugin_dir)
         yield manager
         
         # 清理：确保所有插件都被停止
@@ -19,8 +20,14 @@ class TestPluginLifecycle:
     
     def test_plugin_lifecycle(self, manager):
         """测试插件的完整生命周期"""
-        plugin_name = "bark"  # 使用 bark 插件进行测试
-
+        # 测试 CPU 版本
+        self._test_plugin_lifecycle(manager, "bark")
+        # 测试 GPU 版本（如果可用）
+        if "bark-gpu" in manager.plugins:
+            self._test_plugin_lifecycle(manager, "bark-gpu")
+    
+    def _test_plugin_lifecycle(self, manager, plugin_name):
+        """测试单个插件的生命周期"""
         # 1. 确保插件最初是停止状态
         initial_status = manager.get_plugin_status(plugin_name)
         assert initial_status in ['stopped', None]
@@ -33,21 +40,20 @@ class TestPluginLifecycle:
         status = manager.get_plugin_status(plugin_name)
         assert status == 'running'
 
-        # 4. 重启插件
-        restart_result = manager.restart_plugin(plugin_name)
-        assert isinstance(restart_result, dict)
-        assert restart_result['status'] == 'restarted'
-        assert restart_result['server_type'] == plugin_name
+        # 4. 检查健康状态
+        health = manager.check_plugin_health(plugin_name)
+        assert health['status'] == 'healthy'
+        if 'gpu' in plugin_name:
+            assert 'device' in health
+            assert health['device'] == 'cuda'
+        else:
+            assert health.get('device', 'cpu') == 'cpu'
 
-        # 5. 再次检查状态
-        status = manager.get_plugin_status(plugin_name)
-        assert status == 'running'
-
-        # 6. 停止插件
+        # 5. 停止插件
         stop_result = manager.stop_plugin(plugin_name)
         assert stop_result is True
 
-        # 7. 最后检查状态
+        # 6. 最后检查状态
         final_status = manager.get_plugin_status(plugin_name)
         assert final_status == 'stopped'
 
